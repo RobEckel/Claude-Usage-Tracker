@@ -84,6 +84,74 @@ struct GeneralSettingsView: View {
                                 )
                             )
 
+                            if profile.autoStartSessionEnabled {
+                                Divider()
+
+                                SettingToggle(
+                                    title: "Limit to Time Window",
+                                    description: "Only auto-start sessions during selected local hours",
+                                    isOn: Binding(
+                                        get: { profile.autoStartSessionWindow != nil },
+                                        set: { newValue in
+                                            var updated = profile
+                                            updated.autoStartSessionWindow = newValue
+                                                ? (profile.autoStartSessionWindow ?? .standard)
+                                                : nil
+                                            profileManager.updateProfile(updated)
+                                        }
+                                    )
+                                )
+
+                                if let window = profile.autoStartSessionWindow {
+                                    HStack(spacing: DesignTokens.Spacing.cardPadding) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("Start")
+                                                .font(DesignTokens.Typography.caption)
+                                                .foregroundColor(.secondary)
+
+                                            DatePicker(
+                                                "Start time",
+                                                selection: Binding(
+                                                    get: { dateForMinuteOfDay(window.startMinuteOfDay) },
+                                                    set: { newValue in
+                                                        updateAutoStartWindow(for: profile) { currentWindow in
+                                                            currentWindow.startMinuteOfDay = minuteOfDay(from: newValue)
+                                                        }
+                                                    }
+                                                ),
+                                                displayedComponents: .hourAndMinute
+                                            )
+                                            .labelsHidden()
+                                            .datePickerStyle(.compact)
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("End")
+                                                .font(DesignTokens.Typography.caption)
+                                                .foregroundColor(.secondary)
+
+                                            DatePicker(
+                                                "End time",
+                                                selection: Binding(
+                                                    get: { dateForMinuteOfDay(window.endMinuteOfDay) },
+                                                    set: { newValue in
+                                                        updateAutoStartWindow(for: profile) { currentWindow in
+                                                            currentWindow.endMinuteOfDay = minuteOfDay(from: newValue)
+                                                        }
+                                                    }
+                                                ),
+                                                displayedComponents: .hourAndMinute
+                                            )
+                                            .labelsHidden()
+                                            .datePickerStyle(.compact)
+                                        }
+
+                                        Spacer()
+                                    }
+                                    .padding(.leading, DesignTokens.Spacing.cardPadding)
+                                }
+                            }
+
                             // Requirement
                             VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
                                 Text("Requirements:")
@@ -222,6 +290,27 @@ struct GeneralSettingsView: View {
     }
 
     // MARK: - Helper Methods
+
+    private func updateAutoStartWindow(for profile: Profile, _ update: (inout AutoStartSessionWindow) -> Void) {
+        var updated = profile
+        var window = updated.autoStartSessionWindow ?? .standard
+        update(&window)
+        updated.autoStartSessionWindow = window
+        profileManager.updateProfile(updated)
+    }
+
+    private func dateForMinuteOfDay(_ minuteOfDay: Int) -> Date {
+        let clampedMinute = AutoStartSessionWindow.clampedMinuteOfDay(minuteOfDay)
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        components.hour = clampedMinute / 60
+        components.minute = clampedMinute % 60
+        return Calendar.current.date(from: components) ?? Date()
+    }
+
+    private func minuteOfDay(from date: Date) -> Int {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return ((components.hour ?? 0) * 60) + (components.minute ?? 0)
+    }
 
     private func requestNotificationPermission() {
         Task {

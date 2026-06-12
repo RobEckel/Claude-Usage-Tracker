@@ -7,6 +7,41 @@
 
 import Foundation
 
+/// Local-time window that can limit when automatic session starts are allowed.
+struct AutoStartSessionWindow: Codable, Equatable {
+    static let standard = AutoStartSessionWindow(
+        startMinuteOfDay: 6 * 60,
+        endMinuteOfDay: 18 * 60
+    )
+
+    var startMinuteOfDay: Int
+    var endMinuteOfDay: Int
+
+    init(startMinuteOfDay: Int, endMinuteOfDay: Int) {
+        self.startMinuteOfDay = Self.clampedMinuteOfDay(startMinuteOfDay)
+        self.endMinuteOfDay = Self.clampedMinuteOfDay(endMinuteOfDay)
+    }
+
+    func contains(_ date: Date, calendar: Calendar = .current) -> Bool {
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+        let minuteOfDay = (components.hour ?? 0) * 60 + (components.minute ?? 0)
+
+        if startMinuteOfDay == endMinuteOfDay {
+            return true
+        }
+
+        if startMinuteOfDay < endMinuteOfDay {
+            return minuteOfDay >= startMinuteOfDay && minuteOfDay < endMinuteOfDay
+        }
+
+        return minuteOfDay >= startMinuteOfDay || minuteOfDay < endMinuteOfDay
+    }
+
+    static func clampedMinuteOfDay(_ minute: Int) -> Int {
+        min(max(minute, 0), (24 * 60) - 1)
+    }
+}
+
 /// Represents a complete isolated profile with all credentials and settings
 struct Profile: Codable, Identifiable, Equatable {
     // MARK: - Identity
@@ -42,6 +77,7 @@ struct Profile: Codable, Identifiable, Equatable {
     // MARK: - Behavior Settings (Per-Profile)
     var refreshInterval: TimeInterval
     var autoStartSessionEnabled: Bool
+    var autoStartSessionWindow: AutoStartSessionWindow?
     var checkOverageLimitEnabled: Bool
 
     // MARK: - Notification Settings (Per-Profile)
@@ -71,6 +107,7 @@ struct Profile: Codable, Identifiable, Equatable {
         iconConfig: MenuBarIconConfiguration = .default,
         refreshInterval: TimeInterval = 30.0,
         autoStartSessionEnabled: Bool = false,
+        autoStartSessionWindow: AutoStartSessionWindow? = nil,
         checkOverageLimitEnabled: Bool = true,
         notificationSettings: NotificationSettings = NotificationSettings(),
         isSelectedForDisplay: Bool = true,
@@ -93,6 +130,7 @@ struct Profile: Codable, Identifiable, Equatable {
         self.iconConfig = iconConfig
         self.refreshInterval = refreshInterval
         self.autoStartSessionEnabled = autoStartSessionEnabled
+        self.autoStartSessionWindow = autoStartSessionWindow
         self.checkOverageLimitEnabled = checkOverageLimitEnabled
         self.notificationSettings = notificationSettings
         self.isSelectedForDisplay = isSelectedForDisplay
@@ -123,6 +161,10 @@ struct Profile: Codable, Identifiable, Equatable {
 
     var hasAnyCredentials: Bool {
         hasClaudeAI || hasAPIConsole || cliCredentialsJSON != nil
+    }
+
+    func allowsAutoStartSession(at date: Date = Date(), calendar: Calendar = .current) -> Bool {
+        autoStartSessionWindow?.contains(date, calendar: calendar) ?? true
     }
 }
 
