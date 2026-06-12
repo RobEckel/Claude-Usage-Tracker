@@ -554,6 +554,12 @@
 "general.autostart_toggle" = "自动启动新会话";
 "general.autostart_description" = "会话重置时自动发送消息";
 "general.autostart_requirement" = "• 在凭据 → Claude.ai 标签页中配置了会话密钥";
+"general.autostart_window_toggle" = "限制为时间范围";
+"general.autostart_window_description" = "仅在所选本地时间内自动启动会话";
+"general.autostart_window_start" = "开始";
+"general.autostart_window_end" = "结束";
+"general.autostart_window_start_time" = "开始时间";
+"general.autostart_window_end_time" = "结束时间";
 "general.notifications_title" = "通知";
 "general.notifications_subtitle" = "获取使用里程碑通知";
 "general.connected" = "已连接";

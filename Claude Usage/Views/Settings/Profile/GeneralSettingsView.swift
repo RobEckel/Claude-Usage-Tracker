@@ -84,6 +84,76 @@ struct GeneralSettingsView: View {
                                 )
                             )
 
+                            if profile.autoStartSessionEnabled {
+                                Divider()
+
+                                SettingToggle(
+                                    title: "general.autostart_window_toggle".localized,
+                                    description: "general.autostart_window_description".localized,
+                                    isOn: Binding(
+                                        get: { profile.autoStartSessionWindow?.isEnabled ?? false },
+                                        set: { newValue in
+                                            var updated = profile
+                                            if updated.autoStartSessionWindow == nil {
+                                                updated.autoStartSessionWindow = .standard
+                                            }
+                                            updated.autoStartSessionWindow?.isEnabled = newValue
+                                            profileManager.updateProfile(updated)
+                                        }
+                                    )
+                                )
+
+                                if profile.autoStartSessionWindow?.isEnabled ?? false {
+                                    let window = profile.autoStartSessionWindow ?? .standard
+                                    HStack(spacing: DesignTokens.Spacing.cardPadding) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("general.autostart_window_start".localized)
+                                                .font(DesignTokens.Typography.caption)
+                                                .foregroundColor(.secondary)
+
+                                            DatePicker(
+                                                "general.autostart_window_start_time".localized,
+                                                selection: Binding(
+                                                    get: { dateForMinuteOfDay(window.startMinuteOfDay) },
+                                                    set: { newValue in
+                                                        updateAutoStartWindow(for: profile) { currentWindow in
+                                                            currentWindow.startMinuteOfDay = minuteOfDay(from: newValue)
+                                                        }
+                                                    }
+                                                ),
+                                                displayedComponents: .hourAndMinute
+                                            )
+                                            .labelsHidden()
+                                            .datePickerStyle(.compact)
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("general.autostart_window_end".localized)
+                                                .font(DesignTokens.Typography.caption)
+                                                .foregroundColor(.secondary)
+
+                                            DatePicker(
+                                                "general.autostart_window_end_time".localized,
+                                                selection: Binding(
+                                                    get: { dateForMinuteOfDay(window.endMinuteOfDay) },
+                                                    set: { newValue in
+                                                        updateAutoStartWindow(for: profile) { currentWindow in
+                                                            currentWindow.endMinuteOfDay = minuteOfDay(from: newValue)
+                                                        }
+                                                    }
+                                                ),
+                                                displayedComponents: .hourAndMinute
+                                            )
+                                            .labelsHidden()
+                                            .datePickerStyle(.compact)
+                                        }
+
+                                        Spacer()
+                                    }
+                                    .padding(.leading, DesignTokens.Spacing.cardPadding)
+                                }
+                            }
+
                             // Requirement
                             VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
                                 Text("Requirements:")
@@ -222,6 +292,27 @@ struct GeneralSettingsView: View {
     }
 
     // MARK: - Helper Methods
+
+    private func updateAutoStartWindow(for profile: Profile, _ update: (inout AutoStartSessionWindow) -> Void) {
+        var updated = profile
+        var window = updated.autoStartSessionWindow ?? .standard
+        update(&window)
+        updated.autoStartSessionWindow = window
+        profileManager.updateProfile(updated)
+    }
+
+    private func dateForMinuteOfDay(_ minuteOfDay: Int) -> Date {
+        let clampedMinute = AutoStartSessionWindow.clampedMinuteOfDay(minuteOfDay)
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        components.hour = clampedMinute / 60
+        components.minute = clampedMinute % 60
+        return Calendar.current.date(from: components) ?? Date()
+    }
+
+    private func minuteOfDay(from date: Date) -> Int {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return ((components.hour ?? 0) * 60) + (components.minute ?? 0)
+    }
 
     private func requestNotificationPermission() {
         Task {

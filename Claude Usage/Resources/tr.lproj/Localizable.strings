@@ -553,6 +553,12 @@
 "general.autostart_toggle" = "Yeni Oturumu Otomatik Başlat";
 "general.autostart_description" = "Oturum sıfırlandığında otomatik olarak mesaj gönder";
 "general.autostart_requirement" = "• Kimlik Bilgileri → Claude.ai sekmesinde oturum anahtarı yapılandırılmış olmalı";
+"general.autostart_window_toggle" = "Zaman aralığıyla sınırla";
+"general.autostart_window_description" = "Oturumları yalnızca seçilen yerel saatlerde otomatik başlat";
+"general.autostart_window_start" = "Başlangıç";
+"general.autostart_window_end" = "Bitiş";
+"general.autostart_window_start_time" = "Başlangıç saati";
+"general.autostart_window_end_time" = "Bitiş saati";
 "general.notifications_title" = "Bildirimler";
 "general.notifications_subtitle" = "Kullanım kilometre taşları hakkında bildirim al";
 "general.connected" = "Bağlı";

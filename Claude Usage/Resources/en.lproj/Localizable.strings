@@ -553,6 +553,12 @@
 "general.autostart_toggle" = "Auto-Start New Session";
 "general.autostart_description" = "Automatically send a message when session resets";
 "general.autostart_requirement" = "• Session key configured in Credentials → Claude.ai tab";
+"general.autostart_window_toggle" = "Limit to Time Window";
+"general.autostart_window_description" = "Only auto-start sessions during selected local hours";
+"general.autostart_window_start" = "Start";
+"general.autostart_window_end" = "End";
+"general.autostart_window_start_time" = "Start time";
+"general.autostart_window_end_time" = "End time";
 "general.notifications_title" = "Notifications";
 "general.notifications_subtitle" = "Get notified about usage milestones";
 "general.connected" = "Connected";

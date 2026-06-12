@@ -554,6 +554,12 @@
 "general.autostart_toggle" = "自動啟動新 Session";
 "general.autostart_description" = "Session 重置時自動傳送訊息";
 "general.autostart_requirement" = "• 在憑證 → Claude.ai 分頁中設定了 Session 金鑰";
+"general.autostart_window_toggle" = "限制為時間範圍";
+"general.autostart_window_description" = "僅在選取的本機時間內自動啟動 Session";
+"general.autostart_window_start" = "開始";
+"general.autostart_window_end" = "結束";
+"general.autostart_window_start_time" = "開始時間";
+"general.autostart_window_end_time" = "結束時間";
 "general.notifications_title" = "通知";
 "general.notifications_subtitle" = "取得使用里程碑通知";
 "general.connected" = "已連線";
