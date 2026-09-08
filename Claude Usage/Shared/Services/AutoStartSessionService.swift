@@ -7,14 +7,22 @@
 
 import Foundation
 import Cocoa
+import Combine
 
 /// Background service that monitors all profiles and auto-starts sessions when they reset
 @MainActor
 final class AutoStartSessionService {
     static let shared = AutoStartSessionService()
 
-    // Timer for 5-minute check cycle
-    private var checkTimer: Timer?
+    // One-shot timer that can either poll while active or wake at the next configured window start.
+    private var checkTimer: DispatchSourceTimer?
+    private let checkQueue = DispatchQueue(label: "com.claudeusagetracker.autostart-session")
+    private let checkInterval: TimeInterval = 300
+    private let minimumCheckDelay: TimeInterval = 1
+    private var isRunning = false
+    private var backgroundActivity: NSObjectProtocol?
+    private var profilesObserver: AnyCancellable?
+    private var autoStartConfigurationSignature = ""
 
     // Track last check time to prevent duplicate checks on wake
     private var lastCheckTime: Date = .distantPast
@@ -22,6 +30,8 @@ final class AutoStartSessionService {
     // Observers for sleep/wake notifications
     private var wakeObserver: NSObjectProtocol?
     private var sleepObserver: NSObjectProtocol?
+    private var screenWakeObserver: NSObjectProtocol?
+    private var sessionActiveObserver: NSObjectProtocol?
 
     private let apiService: ClaudeAPIService
     private let profileManager: ProfileManager
@@ -39,20 +49,18 @@ final class AutoStartSessionService {
     // MARK: - Lifecycle
 
     func start() {
-        // Start 5-minute check timer with tolerance for energy efficiency
-        let timer = Timer.scheduledTimer(
-            withTimeInterval: 300, // 5 minutes
-            repeats: true
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                await self.performCheckIfNeeded(source: "timer")
-            }
+        guard !isRunning else {
+            LoggingService.shared.logDebug("AutoStartSessionService already running")
+            return
         }
-        timer.tolerance = 30 // Allow up to 30 seconds of drift for energy efficiency
-        checkTimer = timer
 
-        // Register for wake/sleep notifications
+        isRunning = true
+        observeProfileChanges()
+        updateBackgroundActivity()
+
+        // Register for sleep/wake and display/session activity notifications.
+        // Display sleep can happen without system sleep, so screen/session events
+        // give the service a prompt chance to catch up after an overnight idle.
         let workspace = NSWorkspace.shared
 
         wakeObserver = workspace.notificationCenter.addObserver(
@@ -63,7 +71,7 @@ final class AutoStartSessionService {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 LoggingService.shared.logInfo("Mac woke from sleep - checking for session resets")
-                await self.performCheckIfNeeded(source: "wake")
+                await self.runTriggeredCheck(source: "wake")
             }
         }
 
@@ -75,17 +83,45 @@ final class AutoStartSessionService {
             LoggingService.shared.logDebug("Mac going to sleep")
         }
 
-        LoggingService.shared.logInfo("AutoStartSessionService started (5-minute cycle + wake detection)")
+        screenWakeObserver = workspace.notificationCenter.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                LoggingService.shared.logInfo("Displays woke - checking for session resets")
+                await self.runTriggeredCheck(source: "screenWake")
+            }
+        }
+
+        sessionActiveObserver = workspace.notificationCenter.addObserver(
+            forName: NSWorkspace.sessionDidBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                LoggingService.shared.logInfo("User session became active - checking for session resets")
+                await self.runTriggeredCheck(source: "sessionActive")
+            }
+        }
+
+        LoggingService.shared.logInfo("AutoStartSessionService started (scheduled cycle + wake/display/session detection)")
 
         // Perform immediate initial check to populate state
         Task { @MainActor in
-            await self.performCheckIfNeeded(source: "startup")
+            await self.runTriggeredCheck(source: "startup")
         }
     }
 
     func stop() {
-        checkTimer?.invalidate()
+        isRunning = false
+        checkTimer?.cancel()
         checkTimer = nil
+        profilesObserver?.cancel()
+        profilesObserver = nil
+        endBackgroundActivity()
 
         // Remove observers
         if let wakeObserver = wakeObserver {
@@ -96,8 +132,167 @@ final class AutoStartSessionService {
             NSWorkspace.shared.notificationCenter.removeObserver(sleepObserver)
             self.sleepObserver = nil
         }
+        if let screenWakeObserver = screenWakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(screenWakeObserver)
+            self.screenWakeObserver = nil
+        }
+        if let sessionActiveObserver = sessionActiveObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(sessionActiveObserver)
+            self.sessionActiveObserver = nil
+        }
 
         LoggingService.shared.logInfo("AutoStartSessionService stopped")
+    }
+
+    // MARK: - Scheduling
+
+    private struct CheckSchedule {
+        let delay: TimeInterval
+        let reason: String
+    }
+
+    private func observeProfileChanges() {
+        autoStartConfigurationSignature = makeAutoStartConfigurationSignature()
+
+        profilesObserver = profileManager.$profiles.sink { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self, self.isRunning else { return }
+
+                let newSignature = self.makeAutoStartConfigurationSignature()
+                guard newSignature != self.autoStartConfigurationSignature else { return }
+
+                self.autoStartConfigurationSignature = newSignature
+                self.updateBackgroundActivity()
+                await self.runTriggeredCheck(source: "profileConfig")
+            }
+        }
+    }
+
+    private func runTriggeredCheck(source: String) async {
+        guard isRunning else { return }
+
+        checkTimer?.cancel()
+        checkTimer = nil
+
+        await performCheckIfNeeded(source: source)
+        scheduleNextCheck()
+    }
+
+    private func scheduleNextCheck(from now: Date = Date()) {
+        guard isRunning else { return }
+
+        let schedule = nextCheckSchedule(from: now)
+        scheduleCheck(after: schedule.delay, reason: schedule.reason)
+    }
+
+    private func scheduleCheck(after delay: TimeInterval, reason: String) {
+        checkTimer?.cancel()
+        checkTimer = nil
+
+        let clampedDelay = max(delay, minimumCheckDelay)
+        let timer = DispatchSource.makeTimerSource(queue: checkQueue)
+        let leeway: DispatchTimeInterval = clampedDelay <= checkInterval ? .seconds(30) : .seconds(5)
+
+        timer.schedule(
+            deadline: .now() + dispatchInterval(for: clampedDelay),
+            leeway: leeway
+        )
+
+        timer.setEventHandler { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                await self.runTriggeredCheck(source: "timer")
+            }
+        }
+
+        checkTimer = timer
+        timer.resume()
+
+        LoggingService.shared.logDebug(
+            "AutoStartSessionService: Next check in \(formatDelay(clampedDelay)) (\(reason))"
+        )
+    }
+
+    private func nextCheckSchedule(from now: Date = Date(), calendar: Calendar = .current) -> CheckSchedule {
+        let profilesWithAutoStart = profileManager.profiles.filter { $0.autoStartSessionEnabled }
+
+        guard !profilesWithAutoStart.isEmpty else {
+            return CheckSchedule(delay: checkInterval, reason: "no auto-start profiles")
+        }
+
+        if profilesWithAutoStart.contains(where: { $0.allowsAutoStartSession(at: now, calendar: calendar) }) {
+            return CheckSchedule(delay: checkInterval, reason: "inside active window")
+        }
+
+        let nextStarts = profilesWithAutoStart.compactMap { profile -> Date? in
+            guard let window = profile.autoStartSessionWindow, window.isEnabled else { return nil }
+            return window.nextStart(after: now, calendar: calendar)
+        }
+
+        guard let nextStart = nextStarts.min() else {
+            return CheckSchedule(delay: checkInterval, reason: "unrestricted auto-start profile")
+        }
+
+        let delay = max(nextStart.timeIntervalSince(now), minimumCheckDelay)
+        return CheckSchedule(delay: delay, reason: "next active window starts at \(nextStart)")
+    }
+
+    private func dispatchInterval(for delay: TimeInterval) -> DispatchTimeInterval {
+        .milliseconds(max(1, Int(delay * 1_000)))
+    }
+
+    private func updateBackgroundActivity() {
+        if profileManager.profiles.contains(where: { $0.autoStartSessionEnabled }) {
+            guard backgroundActivity == nil else { return }
+
+            backgroundActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.background],
+                reason: "Keep automatic session start checks running"
+            )
+            LoggingService.shared.logDebug("AutoStartSessionService: Began background activity")
+        } else {
+            endBackgroundActivity()
+        }
+    }
+
+    private func endBackgroundActivity() {
+        guard let backgroundActivity = backgroundActivity else { return }
+
+        ProcessInfo.processInfo.endActivity(backgroundActivity)
+        self.backgroundActivity = nil
+        LoggingService.shared.logDebug("AutoStartSessionService: Ended background activity")
+    }
+
+    private func makeAutoStartConfigurationSignature() -> String {
+        profileManager.profiles
+            .map { profile in
+                let window = profile.autoStartSessionWindow
+                return [
+                    profile.id.uuidString,
+                    String(profile.autoStartSessionEnabled),
+                    String(window?.isEnabled ?? false),
+                    String(window?.startMinuteOfDay ?? -1),
+                    String(window?.endMinuteOfDay ?? -1)
+                ].joined(separator: ":")
+            }
+            .joined(separator: "|")
+    }
+
+    private func formatDelay(_ delay: TimeInterval) -> String {
+        let seconds = Int(delay.rounded())
+        if seconds < 60 {
+            return "\(seconds)s"
+        }
+
+        let minutes = seconds / 60
+        let remainingSeconds = seconds % 60
+        if minutes < 60 {
+            return remainingSeconds == 0 ? "\(minutes)m" : "\(minutes)m \(remainingSeconds)s"
+        }
+
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        return remainingMinutes == 0 ? "\(hours)h" : "\(hours)h \(remainingMinutes)m"
     }
 
     // MARK: - Profile Checking
@@ -117,6 +312,8 @@ final class AutoStartSessionService {
 
     private func checkAllProfiles(source: String) async {
         LoggingService.shared.logDebug("AutoStartSessionService: Checking all profiles for auto-start (source: \(source))")
+        updateBackgroundActivity()
+        autoStartConfigurationSignature = makeAutoStartConfigurationSignature()
 
         // Get all profiles with auto-start enabled
         let profilesWithAutoStart = profileManager.profiles.filter { $0.autoStartSessionEnabled }
@@ -149,11 +346,22 @@ final class AutoStartSessionService {
             return
         }
 
+        guard profile.allowsAutoStartSession() else {
+            if let window = profile.autoStartSessionWindow {
+                LoggingService.shared.logDebug(
+                    "Skipping profile '\(profile.name)' - outside auto-start window (\(window.startMinuteOfDay)-\(window.endMinuteOfDay))"
+                )
+            }
+            return
+        }
+
         do {
             // Fetch current usage for this profile
             let (usage, hasOpenWindow) = try await fetchUsageForProfile(profile)
 
+            let now = Date()
             let currentPercentage = usage.effectiveSessionPercentage
+            let resetTimeHasPassed = usage.sessionResetTime <= now
 
             // A session window that is open but unused reads 0% — often for
             // hours, because the initialization message (and light real usage)
@@ -164,16 +372,18 @@ final class AutoStartSessionService {
             // windows the user opened themselves. Gating on the live reset time
             // from the API closes both gaps: only a window with no current
             // `resets_at` is genuinely waiting to be opened.
-            if currentPercentage == 0.0 && !hasOpenWindow {
+            if !hasOpenWindow && (currentPercentage <= 0.0 || resetTimeHasPassed) {
                 // Check if we recently auto-started and should wait for reset
                 if let lastResetTime = lastCapturedResetTime[profile.id],
-                   Date() < lastResetTime {
+                   now < lastResetTime {
                     let minutesRemaining = Int(lastResetTime.timeIntervalSinceNow / 60)
                     LoggingService.shared.logDebug("Profile '\(profile.name)': skipping auto-start - \(minutesRemaining)m until session reset")
                     return
                 }
 
-                LoggingService.shared.logInfo("Session at 0% for profile '\(profile.name)' - triggering auto-start")
+                LoggingService.shared.logInfo(
+                    "Session ready to start for profile '\(profile.name)' (usage: \(currentPercentage)%, reset: \(usage.sessionResetTime))"
+                )
 
                 // Auto-start the session
                 await autoStartSession(for: profile)

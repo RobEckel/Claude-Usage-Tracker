@@ -577,6 +577,12 @@
 "general.autostart_toggle" = "新しいセッションを自動開始";
 "general.autostart_description" = "セッションがリセットされたときに自動的にメッセージを送信";
 "general.autostart_requirement" = "• 認証情報 → Claude.aiタブでセッションキーが構成されている";
+"general.autostart_window_toggle" = "時間帯に制限";
+"general.autostart_window_description" = "選択したローカル時間内でのみセッションを自動開始";
+"general.autostart_window_start" = "開始";
+"general.autostart_window_end" = "終了";
+"general.autostart_window_start_time" = "開始時刻";
+"general.autostart_window_end_time" = "終了時刻";
 "general.notifications_title" = "通知";
 "general.notifications_subtitle" = "使用状況のマイルストーンについて通知を受け取る";
 "general.connected" = "接続済み";
