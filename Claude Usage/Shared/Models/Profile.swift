@@ -217,6 +217,7 @@ struct Profile: Codable, Identifiable, Equatable {
         case claudeUsage, apiUsage
         case iconConfig
         case refreshInterval, autoStartSessionEnabled, checkOverageLimitEnabled
+        case autoStartSessionWindow
         case notificationSettings
         case isSelectedForDisplay
         case createdAt, lastUsedAt
@@ -252,6 +253,7 @@ struct Profile: Codable, Identifiable, Equatable {
         iconConfig = try c.decodeIfPresent(MenuBarIconConfiguration.self, forKey: .iconConfig) ?? .default
         refreshInterval = try c.decodeIfPresent(TimeInterval.self, forKey: .refreshInterval) ?? 30.0
         autoStartSessionEnabled = try c.decodeIfPresent(Bool.self, forKey: .autoStartSessionEnabled) ?? false
+        autoStartSessionWindow = try c.decodeIfPresent(AutoStartSessionWindow.self, forKey: .autoStartSessionWindow)
         checkOverageLimitEnabled = try c.decodeIfPresent(Bool.self, forKey: .checkOverageLimitEnabled) ?? true
         notificationSettings = try c.decodeIfPresent(NotificationSettings.self, forKey: .notificationSettings) ?? NotificationSettings()
         isSelectedForDisplay = try c.decodeIfPresent(Bool.self, forKey: .isSelectedForDisplay) ?? true
@@ -285,6 +287,7 @@ struct Profile: Codable, Identifiable, Equatable {
         try c.encode(iconConfig, forKey: .iconConfig)
         try c.encode(refreshInterval, forKey: .refreshInterval)
         try c.encode(autoStartSessionEnabled, forKey: .autoStartSessionEnabled)
+        try c.encodeIfPresent(autoStartSessionWindow, forKey: .autoStartSessionWindow)
         try c.encode(checkOverageLimitEnabled, forKey: .checkOverageLimitEnabled)
         try c.encode(notificationSettings, forKey: .notificationSettings)
         try c.encode(isSelectedForDisplay, forKey: .isSelectedForDisplay)
