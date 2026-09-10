@@ -162,6 +162,12 @@
 "general.autostart_toggle" = "새 세션 자동 시작";
 "general.autostart_description" = "세션 재설정 시 자동으로 메시지 전송";
 "general.autostart_requirement" = "• 자격 증명 → Claude.ai 탭에서 세션 키 구성됨";
+"general.autostart_window_toggle" = "시간 범위로 제한";
+"general.autostart_window_description" = "선택한 로컬 시간 동안에만 세션 자동 시작";
+"general.autostart_window_start" = "시작";
+"general.autostart_window_end" = "종료";
+"general.autostart_window_start_time" = "시작 시간";
+"general.autostart_window_end_time" = "종료 시간";
 "general.notifications_title" = "알림";
 "general.notifications_subtitle" = "사용량 마일스톤 알림 받기";
 "general.connected" = "연결됨";

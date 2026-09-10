@@ -149,6 +149,15 @@ final class AutoStartSessionService {
             return
         }
 
+        guard profile.allowsAutoStartSession() else {
+            if let window = profile.autoStartSessionWindow {
+                LoggingService.shared.logDebug(
+                    "Skipping profile '\(profile.name)' - outside auto-start window (\(window.startMinuteOfDay)-\(window.endMinuteOfDay))"
+                )
+            }
+            return
+        }
+
         do {
             // Fetch current usage for this profile
             let (usage, hasOpenWindow) = try await fetchUsageForProfile(profile)

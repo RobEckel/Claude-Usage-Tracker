@@ -80,6 +80,7 @@ class ProfileManager: ObservableObject {
             iconConfig: iconConfig,
             refreshInterval: copySettingsFrom?.refreshInterval ?? 30.0,
             autoStartSessionEnabled: copySettingsFrom?.autoStartSessionEnabled ?? false,
+            autoStartSessionWindow: copySettingsFrom?.autoStartSessionWindow,
             checkOverageLimitEnabled: copySettingsFrom?.checkOverageLimitEnabled ?? true,
             notificationSettings: copySettingsFrom?.notificationSettings ?? NotificationSettings(),
             isSelectedForDisplay: true

@@ -575,6 +575,12 @@
 "general.autostart_toggle" = "Avvio Automatico Nuova Sessione";
 "general.autostart_description" = "Invia automaticamente un messaggio quando la sessione si resetta";
 "general.autostart_requirement" = "• Chiave di sessione configurata in Credenziali → scheda Claude.ai";
+"general.autostart_window_toggle" = "Limita a una fascia oraria";
+"general.autostart_window_description" = "Avvia automaticamente le sessioni solo negli orari locali selezionati";
+"general.autostart_window_start" = "Inizio";
+"general.autostart_window_end" = "Fine";
+"general.autostart_window_start_time" = "Ora di inizio";
+"general.autostart_window_end_time" = "Ora di fine";
 "general.notifications_title" = "Notifiche";
 "general.notifications_subtitle" = "Ricevi notifiche sulle tappe di utilizzo";
 "general.connected" = "Connesso";
